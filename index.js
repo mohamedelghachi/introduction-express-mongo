@@ -1,6 +1,7 @@
 const { MongoClient,ObjectId } = require("mongodb");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const auth = require("./middlewares/auth"); // Import the auth middleware
 
 async function connectToDatabase() {
   const uri = "mongodb://127.0.0.1:27017/dbowfs202"; // Replace with your connection string
@@ -79,15 +80,9 @@ initializeDb()
       res.json({ token });
     });
 
-    app.get("/profile", async (req, res) => {
-      const token = req.headers["authorization"]?.split(" ")[1];
-      if (!token) {
-        return res.status(401).json({ message: "Token manquant" });
-      }
+    app.get("/profile", auth, async (req, res) => {
       try {
-        const decoded = jwt.verify(token, "abcefgh");
-        console.log("Decoded token:", decoded.sub);
-        const user = await db.collection("users").findOne({ _id: new ObjectId( decoded.sub) });
+        const user = await db.collection("users").findOne({ _id: new ObjectId( ""+req.userId) });
         if (!user) {
           return res.status(404).json({ message: "Utilisateur non trouvé" });
         }
