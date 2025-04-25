@@ -1,7 +1,9 @@
-const { MongoClient } = require("mongodb");
+const { MongoClient,ObjectId } = require("mongodb");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 async function connectToDatabase() {
-  const uri = "mongodb://127.0.0.1:27017/dbmonapi"; // Replace with your connection string
+  const uri = "mongodb://127.0.0.1:27017/dbowfs202"; // Replace with your connection string
   const client = new MongoClient(uri);
 
   try {
@@ -18,6 +20,8 @@ async function connectToDatabase() {
 const express = require("express");
 const app = express();
 
+app.use(express.json()); // Middleware to parse JSON bodies
+
 let db; // Declare the db variable
 
 async function initializeDb() {
@@ -31,7 +35,7 @@ initializeDb()
     app.get("/equipes", async (req, res) => {
       console.log("GET /equipes");
       try {
-        const results = await db.collection("equipe").find({}).toArray();
+        const results = await db.collection("equipes").find({}).toArray();
         console.log(results); // Log the actual results
         res.status(200).json(results);
       } catch (err) {
@@ -41,6 +45,70 @@ initializeDb()
           .json({ message: "Erreur lors de la récupération des équipes" });
       }
     });
+
+    app.post("/register", async (req, res) => {
+      const { email, password } = req.body;
+      console.log("POST /register", { email, password });
+      
+      const existingUser = await db.collection("users").find({ email }).toArray();
+      if (existingUser.length > 0) {
+        console.log("Email already exists:", existingUser.email);
+        return res.status(400).json({ message: "Email déjà utilisé" });
+      }
+      const hashedPassword = bcrypt.hashSync(password, 10);
+      const newUser = { email, password: hashedPassword };
+      await db.collection("users").insertOne(newUser);
+      res.status(201).json({ message: "Utilisateur créé avec succès" });
+    });
+
+
+    app.post("/login", async (req, res) => {
+      const { email, password } = req.body;
+      console.log("POST /login", { email, password });
+      const user = await db.collection("users").findOne({ email });
+      console.log("user : ",user.email)
+      if (!user || !bcrypt.compareSync(password, user.password)) {
+        return res
+          .status(401)
+          .json({ message: "Email ou mot de passe invalide" });
+      }
+      const payload = { sub: user._id.toString() };
+      const token = jwt.sign(payload, "abcefgh", {
+        expiresIn: "1h",
+      });
+      res.json({ token });
+    });
+
+    app.get("/profile", async (req, res) => {
+      const token = req.headers["authorization"]?.split(" ")[1];
+      if (!token) {
+        return res.status(401).json({ message: "Token manquant" });
+      }
+      try {
+        const decoded = jwt.verify(token, "abcefgh");
+        console.log("Decoded token:", decoded.sub);
+        const user = await db.collection("users").findOne({ _id: new ObjectId( decoded.sub) });
+        if (!user) {
+          return res.status(404).json({ message: "Utilisateur non trouvé" });
+        }
+        res.json({ email: user.email });
+      } catch (err) {
+        console.error("Token verification failed:", err);
+        res.status(401).json({ message: "Token invalide" });
+      }
+    }
+    );
+
+
+
+
+
+
+
+
+
+
+
 
     app.listen(3000, () => {
       console.log("Server is running on port 3000");
